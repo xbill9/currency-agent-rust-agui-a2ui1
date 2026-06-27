@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "mcp_gke": {
+      "serverUrl": "https://container.googleapis.com/mcp",
+      "headers": {
+        "Authorization": "Bearer $GKE_TOKEN"
+      }
+    },
+    "mcp_cloudrun": {
+      "serverUrl": "https://run.googleapis.com/mcp",
+      "headers": {
+        "Authorization": "Bearer $CLOUDRUN_TOKEN"
+      }
+    },
+    "currency_mcp": {
+      "serverUrl": "http://localhost:8080/mcp"
+    }
+  }
+}

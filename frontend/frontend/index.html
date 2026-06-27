@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Currency Intellect — Multi-Agent Conversion Workspace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+    <div class="app-layout">
+        <!-- Sidebar Panel -->
+        <aside class="sidebar-panel">
+            <div class="brand-header">
+                <div class="brand-logo">
+                    <span class="logo-icon">💵</span>
+                    <span class="logo-text">Currency<span class="highlight">Intellect</span></span>
+                </div>
+            </div>
+
+            <!-- Quick Converter Widget -->
+            <div class="sidebar-card widget-card">
+                <h3><span class="icon">🔄</span> Quick Calculator</h3>
+                <div class="calculator-form">
+                    <div class="form-group">
+                        <label for="calc-amount">Amount</label>
+                        <input type="number" id="calc-amount" value="100" min="0" step="0.01">
+                    </div>
+                    <div class="select-row">
+                        <div class="form-group flex-1">
+                            <label for="calc-from">From</label>
+                            <select id="calc-from">
+                                <option value="USD" selected>USD - Dollar</option>
+                                <option value="EUR">EUR - Euro</option>
+                                <option value="GBP">GBP - Pound</option>
+                                <option value="JPY">JPY - Yen</option>
+                                <option value="CAD">CAD - Dollar</option>
+                                <option value="AUD">AUD - Dollar</option>
+                            </select>
+                        </div>
+                        <div class="swap-btn-container">
+                            <button id="calc-swap" title="Swap Currencies" type="button">⇄</button>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="calc-to">To</label>
+                            <select id="calc-to">
+                                <option value="USD">USD - Dollar</option>
+                                <option value="EUR" selected>EUR - Euro</option>
+                                <option value="GBP">GBP - Pound</option>
+                                <option value="JPY">JPY - Yen</option>
+                                <option value="CAD">CAD - Dollar</option>
+                                <option value="AUD">AUD - Dollar</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button id="calc-ask-btn" class="btn-primary btn-sm btn-full" type="button">
+                        Ask Agent to Convert
+                    </button>
+                </div>
+            </div>
+
+            <!-- Live Market rates grid -->
+            <div class="sidebar-card live-rates-card">
+                <div class="card-header-row">
+                    <h3><span class="icon">📈</span> Live Markets</h3>
+                    <button id="refresh-rates" class="btn-icon" title="Refresh Rates">⟳</button>
+                </div>
+                <div class="rates-list-container">
+                    <div id="rates-loader" class="small-loader"></div>
+                    <div id="rates-list" class="rates-list">
+                        <!-- Rates list items injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Server configuration panel (collapsible) -->
+            <div class="sidebar-card collapsible-card">
+                <button class="collapsible-header" id="toggle-config">
+                    <span><span class="icon">⚙️</span> Server Config</span>
+                    <span class="chevron">▼</span>
+                </button>
+                <div class="collapsible-content hidden" id="config-content">
+                    <div class="form-group">
+                        <label for="agent-url">Agent Endpoint URL</label>
+                        <input type="text" id="agent-url" placeholder="http://localhost:10000">
+                    </div>
+                    <div class="form-group">
+                        <label for="mcp-url">MCP Server URL</label>
+                        <input type="text" id="mcp-url" placeholder="http://localhost:8080/mcp">
+                    </div>
+                    <div class="server-status-list">
+                        <div class="status-item">
+                            <span class="status-dot green" id="status-agent-dot"></span>
+                            <span class="status-label">ADK Agent Server</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-dot green" id="status-mcp-dot"></span>
+                            <span class="status-label">FastMCP Server</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace Area -->
+        <main class="main-workspace">
+            <!-- Header bar -->
+            <header class="top-bar">
+                <div class="workspace-title-section">
+                    <h2>Agent Workspace</h2>
+                    <span class="badge" id="session-badge">Session: Initializing...</span>
+                </div>
+                <div class="top-bar-actions">
+                    <button id="clear-chat" class="btn-secondary btn-sm" title="Clear Chat history">
+                        <span class="icon">🗑️</span> Clear Chat
+                    </button>
+                </div>
+            </header>
+
+            <!-- Chat area -->
+            <div class="chat-container">
+                <div id="chat-messages" class="chat-messages">
+                    <!-- Welcome / suggestions screen -->
+                    <div class="welcome-screen" id="welcome-screen">
+                        <div class="welcome-icon">🤖</div>
+                        <h1>Welcome to Currency Intellect</h1>
+                        <p>Ask me to handle currency conversions, fetch exchange rates, or compare historical data. Powered by Gemini 2.5 and Frankfurter API.</p>
+                        
+                        <div class="suggestions-grid">
+                            <button class="suggestion-card" data-query="How many EUR is 250 USD?">
+                                <h4>Convert USD to EUR</h4>
+                                <p>"How many EUR is 250 USD?"</p>
+                            </button>
+                            <button class="suggestion-card" data-query="Compare the exchange rate between JPY and GBP.">
+                                <h4>Compare JPY & GBP</h4>
+                                <p>"Compare the exchange rate between JPY and GBP."</p>
+                            </button>
+                            <button class="suggestion-card" data-query="What is the exchange rate from CAD to USD today?">
+                                <h4>CAD to USD Rate</h4>
+                                <p>"What is the exchange rate from CAD to USD today?"</p>
+                            </button>
+                            <button class="suggestion-card" data-query="Can you convert 1500 GBP to USD?">
+                                <h4>Convert GBP to USD</h4>
+                                <p>"Can you convert 1500 GBP to USD?"</p>
+                            </button>
+                        </div>
+                        
+                        <!-- A2UI Demo Sandbox -->
+                        <div class="demo-mockups-section" style="margin-top: 32px; text-align: center; width: 100%;">
+                            <h3 style="font-size: 1.1rem; font-weight: 600; color: #fff; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                                <span>🎨</span> A2UI Demo Sandbox
+                            </h3>
+                            <p style="font-size: 0.85rem; color: hsl(var(--text-muted)); margin-bottom: 16px; max-width: 500px; margin-left: auto; margin-right: auto;">
+                                Click below to instantly render beautiful A2UI interface cards and tables right inside the chat window.
+                            </p>
+                            <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                                <button id="demo-card-btn" class="btn-secondary btn-sm" type="button" style="padding: 10px 16px; border-radius: 8px; font-weight: 500; font-family: var(--font-outfit);">
+                                    Demo 1: A2UI Conversion Card
+                                </button>
+                                <button id="demo-table-btn" class="btn-secondary btn-sm" type="button" style="padding: 10px 16px; border-radius: 8px; font-weight: 500; font-family: var(--font-outfit);">
+                                    Demo 2: A2UI Rates Table
+                                </button>
+                                <button id="demo-chart-btn" class="btn-secondary btn-sm" type="button" style="padding: 10px 16px; border-radius: 8px; font-weight: 500; font-family: var(--font-outfit);">
+                                    Demo 3: Historical Trends
+                                </button>
+                                <button id="demo-wallet-btn" class="btn-secondary btn-sm" type="button" style="padding: 10px 16px; border-radius: 8px; font-weight: 500; font-family: var(--font-outfit);">
+                                    Demo 4: Multi-Currency Wallet
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SSE Live Streaming progress indicator bar -->
+                <div id="live-progress-bar" class="live-progress-bar hidden">
+                    <div class="progress-pulse"></div>
+                    <div id="progress-text" class="progress-text">Agent is processing...</div>
+                </div>
+
+                <!-- Input area -->
+                <footer class="chat-input-bar">
+                    <form id="chat-form" class="chat-form">
+                        <input type="text" id="chat-input" placeholder="Ask about exchange rates, e.g. 'How much is 100 USD in CAD?'" autocomplete="off" required>
+                        <button type="submit" id="send-button" class="btn-send">
+                            <span>Send</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h5.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086l-1.414 4.926a.75.75 0 00.826.95 28.896 28.896 0 0015.293-7.154.75.75 0 000-1.115A28.897 28.897 0 003.105 2.289z" />
+                            </svg>
+                        </button>
+                    </form>
+                </footer>
+            </div>
+
+            <!-- Dev Log Drawer -->
+            <div class="dev-log-drawer collapsed" id="dev-log-drawer">
+                <button class="drawer-trigger" id="toggle-drawer">
+                    <span>📟 Developer Stream Log</span>
+                    <span class="drawer-arrow">▲</span>
+                </button>
+                <div class="drawer-content">
+                    <div class="log-actions">
+                        <span>Raw Server Sent Events (SSE) log:</span>
+                        <button id="clear-logs" class="btn-text-sm">Clear logs</button>
+                    </div>
+                    <pre id="raw-logs-pre" class="raw-logs-pre">No events logged yet.</pre>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script type="module" src="app.ts"></script>
+</body>
+</html>

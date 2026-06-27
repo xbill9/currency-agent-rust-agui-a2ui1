@@ -1,0 +1,54 @@
+steps:
+  # --- 1. Build and Deploy MCP Server ---
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/currency-mcp:latest', '-f', 'mcp-server/Dockerfile', 'mcp-server/']
+    id: 'build-mcp'
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/currency-mcp:latest']
+    waitFor: ['build-mcp']
+    id: 'push-mcp'
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'currency-mcp'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/currency-mcp:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+    waitFor: ['push-mcp']
+    id: 'deploy-mcp'
+
+  # --- 2. Build and Deploy ADK Agent ---
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/currency-agent:latest', '.']
+    id: 'build-agent'
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/currency-agent:latest']
+    waitFor: ['build-agent']
+    id: 'push-agent'
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        MCP_URL=$(gcloud run services describe currency-mcp --platform managed --region us-central1 --format "value(status.url)")
+        # We assume GOOGLE_API_KEY is available in the environment or we use Vertex AI
+        gcloud run deploy currency-agent \
+          --image gcr.io/$PROJECT_ID/currency-agent:latest \
+          --region us-central1 \
+          --platform managed \
+          --allow-unauthenticated \
+          --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=us-central1,MCP_SERVER_URL=$${MCP_URL}/mcp"
+    waitFor: ['deploy-mcp', 'push-agent']
+    id: 'deploy-agent'
+
+# Automatically push the images
+images:
+  - 'gcr.io/$PROJECT_ID/currency-mcp:latest'
+  - 'gcr.io/$PROJECT_ID/currency-agent:latest'
+
+timeout: 1200s
