@@ -1,10 +1,42 @@
-# 💵💱💶 Currency Agent (Rust + Frontend)
+# 💵💱💶 Currency Agent (Rust + Frontend + A2UI 1.0)
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 A high-performance sample agent demonstrating Rust + Model Context Protocol (MCP) + Agent-to-User Interface (A2UI) working together.
 
 ![A2UI Mockup Interface](images/a2ui_interface_mockup.png)
+
+## A2UI 1.0: Express and Server-Side Macros in Rust
+
+This copy of `currency-agent-rust-agui` runs on [A2UI 1.0](https://a2ui.org). The official agent SDKs are Python, TypeScript and Dart, so the Express format and server-side macros are ported to Rust in `src/express/`, following the Python SDK `a2ui-agent-sdk` 0.11.0.
+
+- **Express compiler and response parser** (`src/express/syntax.rs`, `normalize.rs`, `catalog.rs`, `compiler.rs`, `response.rs`). The model writes compact `<a2ui>` blocks; the agent compiles them into A2UI 1.0 messages against the v1.0 Basic catalog, the currency charts catalog and the macro catalog.
+- **Server-side macros** (`src/express/macros.rs`, `src/currency_ui.rs`). `RateCard(from, to, amount)` and `RateHistoryChart(from, to, days)` are components the model calls in one line. The Rust server fetches the rates from the Frankfurter API and expands each call into Basic `Card`/`Column`/`Text`/`Divider` and the custom `LineChart`, so rate figures never pass through the model. Currency codes are checked and the day count clamped before any request.
+- **Prompt** (`src/express/prompt.rs`). The Express contract and the positional signatures are generated from the catalogs. The 1,200-line hand-written v0.9 JSON schema prompt in `src/main.rs` is gone.
+- **React UI.** Each compiled block reaches the browser as `<a2ui-json>[...]</a2ui-json>` and is rendered by `@a2ui/react` 0.15.0 with `@a2ui/web_core/v1_0` (`frontend-react/src/components/A2uiMessages.tsx`), in the chat and in the dashboard viewport. CopilotKit's A2UI middleware speaks v0.9, so it is turned off.
+
+#### Conformance
+
+The upstream Express conformance suites from the `python/a2ui-agent-sdk/v0.11.0` release are vendored in `tests/a2ui_conformance/` (Apache-2.0) and run with `cargo test --test express_conformance -- --nocapture`:
+
+| Suite | Passed | Known gaps |
+|---|---|---|
+| `agent/express/compiler.yaml` | 132 of 135 | 3 cases that load a v0.9 catalog; the port targets v1.0 only |
+| `agent/express/response_parser.yaml` | 38 of 38 | none |
+
+Not ported: the streaming parser, the decompiler, Direct JSON and the experimental formats. After macro expansion, messages are checked structurally (catalog, required and declared properties, child ids) rather than against the full JSON Schema.
+
+`cargo test --test currency_ui -- --ignored` runs the two macro tests that call the live Frankfurter API.
+
+#### Measured on 2026-11-11 (`gemini-2.5-flash`, one run each)
+
+| Request | Path | Result |
+|---|---|---|
+| USD to JPY trend, last 30 days | AG-UI, direct to the agent | `RateHistoryChart` card with line chart, 2.1 s |
+| How much is 250 USD in EUR? (follow-up turn) | React UI | `RateCard`: 250.00 USD = 224.68 EUR |
+| Convert 1500 CAD to USD | A2A `message/send` | `RateCard`: 1,500.00 CAD = 1,053.76 USD |
+
+The vanilla `frontend/` was not migrated or tested against 1.0 messages.
 
 ## Overview
 

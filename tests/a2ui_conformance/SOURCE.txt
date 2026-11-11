@@ -1,0 +1,1 @@
+Vendored from https://github.com/a2ui-project/a2ui tag python/a2ui-agent-sdk/v0.11.0 (commit 3295e67, Apache-2.0): the release matching a2ui-agent-sdk 0.11.0 and @a2ui/web_core 0.15.0. Do not edit; re-copy to update.

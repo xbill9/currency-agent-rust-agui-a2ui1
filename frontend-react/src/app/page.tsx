@@ -8,357 +8,16 @@ import {
   CopilotChatMessageView,
   CopilotChatAssistantMessage,
 } from "@copilotkit/react-core/v2";
-import { useA2UI, A2UIRenderer } from "@copilotkit/a2ui-renderer";
+import dynamic from "next/dynamic";
+import { splitA2uiContent } from "@/components/a2uiContent";
 import React, { useState, useEffect } from "react";
 import { z } from "zod";
 
-function normalizeA2UIJson(parsed: any) {
-  if (!parsed) return parsed;
-
-  let components: any[] = [];
-  if (Array.isArray(parsed)) {
-    components = parsed;
-  } else if (parsed && Array.isArray(parsed.components)) {
-    components = parsed.components;
-  } else if (parsed && parsed.updateComponents && Array.isArray(parsed.updateComponents.components)) {
-    components = parsed.updateComponents.components;
-  } else if (parsed && parsed.message && Array.isArray(parsed.message.components)) {
-    components = parsed.message.components;
-  } else {
-    return parsed;
-  }
-
-  const normalized: any[] = [];
-  components.forEach((c: any) => {
-    const norm: any = { ...c };
-    
-    // Ensure component / type reciprocal matching
-    if (!norm.type && norm.component) {
-      norm.type = norm.component;
-    }
-    if (!norm.component && norm.type) {
-      norm.component = norm.type;
-    }
-    if (!norm.props) {
-      norm.props = {};
-    }
-
-    // Bidirectional sync for Text component properties (props.value/text <-> top-level text)
-    if (norm.component === "Text" || norm.type === "Text") {
-      const textValue = norm.text || norm.props.text || norm.props.value || "";
-      norm.text = textValue;
-      norm.props.text = textValue;
-      norm.props.value = textValue;
-
-      const variantValue = norm.variant || norm.props.variant || "body";
-      norm.variant = variantValue;
-      norm.props.variant = variantValue;
-    }
-
-    // Bidirectional sync for Card component properties (props.child/children <-> top-level child)
-    if (norm.component === "Card" || norm.type === "Card") {
-      const titleValue = norm.title || norm.props.title || "💵 Conversion Result";
-      norm.title = titleValue;
-      norm.props.title = titleValue;
-
-      let childId = norm.child || norm.props.child;
-      if (!childId && Array.isArray(norm.props.children) && norm.props.children.length > 0) {
-        childId = norm.props.children[0];
-      }
-      if (!childId && Array.isArray(norm.children) && norm.children.length > 0) {
-        childId = norm.children[0];
-      }
-
-      // Standard basic catalog requires Card to have a "child" top-level ID.
-      // If we don't have one, synthesize a default or use the first child.
-      if (!childId) {
-        childId = norm.id + "_child";
-      }
-
-      norm.child = childId;
-      norm.props.child = childId;
-
-      if (!norm.props.children) {
-        norm.props.children = [childId];
-      }
-    }
-
-    // Robust bidirectional sync for all standard/custom properties (top-level <-> props)
-    const keysToSync = [
-      "variant",
-      "title",
-      "child",
-      "children",
-      "headers",
-      "rows",
-      "labels",
-      "values",
-      "color",
-      "text",
-      "value",
-      "primary",
-      "action",
-      "series"
-    ];
-    keysToSync.forEach((key) => {
-      if (norm[key] !== undefined && norm.props[key] === undefined) {
-        norm.props[key] = norm[key];
-      } else if (norm.props[key] !== undefined && norm[key] === undefined) {
-        norm[key] = norm.props[key];
-      }
-    });
-
-    normalized.push(norm);
-  });
-
-  // Resolve parent-child relationships using "child" or "children"
-  normalized.forEach((c: any) => {
-    if (c.child) {
-      const childId = c.child;
-      const childComp = normalized.find(x => x.id === childId);
-      if (childComp && childComp.parentId === undefined) {
-        childComp.parentId = c.id;
-      }
-    }
-    if (c.props?.child) {
-      const childId = c.props.child;
-      const childComp = normalized.find(x => x.id === childId);
-      if (childComp && childComp.parentId === undefined) {
-        childComp.parentId = c.id;
-      }
-    }
-    if (Array.isArray(c.children)) {
-      c.children.forEach((childId: any) => {
-        const childComp = normalized.find(x => x.id === childId);
-        if (childComp && childComp.parentId === undefined) {
-          childComp.parentId = c.id;
-        }
-      });
-    }
-    if (Array.isArray(c.props?.children)) {
-      c.props.children.forEach((childId: any) => {
-        const childComp = normalized.find(x => x.id === childId);
-        if (childComp && childComp.parentId === undefined) {
-          childComp.parentId = c.id;
-        }
-      });
-    }
-  });
-
-  // Back-populate parent's props.children if a child has parentId
-  normalized.forEach((c: any) => {
-    if (c.parentId !== undefined) {
-      const parent = normalized.find(x => x.id === c.parentId);
-      if (parent) {
-        if (!parent.props) {
-          parent.props = {};
-        }
-        if (!parent.props.children) {
-          parent.props.children = [];
-        }
-        if (Array.isArray(parent.props.children) && !parent.props.children.includes(c.id)) {
-          parent.props.children.push(c.id);
-        }
-      }
-    }
-  });
-
-  // Ensure we have a "root" component to satisfy A2UI/A2UIRenderer requirements
-  const hasRoot = normalized.some(x => x.id === "root");
-  if (!hasRoot && normalized.length > 0) {
-    const topLevelComponents = normalized.filter(x => x.parentId === undefined);
-    if (topLevelComponents.length === 1) {
-      topLevelComponents[0].id = "root";
-    } else if (topLevelComponents.length > 1) {
-      // Create a wrapper Column with id "root"
-      const rootWrapper = {
-        id: "root",
-        type: "Column",
-        component: "Column",
-        props: {
-          children: topLevelComponents.map(x => x.id)
-        }
-      };
-      // Mark topLevelComponents as having root as parent
-      topLevelComponents.forEach(x => {
-        x.parentId = "root";
-      });
-      normalized.unshift(rootWrapper);
-    } else {
-      normalized[0].id = "root";
-    }
-  }
-
-  const result = {
-    version: parsed.version || "v0.9",
-  } as any;
-
-  if (parsed.updateComponents) {
-    result.updateComponents = {
-      ...parsed.updateComponents,
-      components: normalized,
-    };
-  } else if (parsed.createSurface) {
-    result.createSurface = {
-      ...parsed.createSurface,
-    };
-  } else {
-    result.updateComponents = {
-      surfaceId: parsed.surfaceId || "currency_agent",
-      components: normalized,
-    };
-  }
-
-  return result;
-}
-
-function cleanPartialJson(str: string): string {
-  let inString = false;
-  let isEscaped = false;
-  const stack: string[] = [];
-
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-    if (isEscaped) {
-      isEscaped = false;
-      continue;
-    }
-    if (char === '\\') {
-      isEscaped = true;
-      continue;
-    }
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (!inString) {
-      if (char === '{' || char === '[') {
-        stack.push(char);
-      } else if (char === '}') {
-        if (stack[stack.length - 1] === '{') {
-          stack.pop();
-        }
-      } else if (char === ']') {
-        if (stack[stack.length - 1] === '[') {
-          stack.pop();
-        }
-      }
-    }
-  }
-
-  let closedStr = str;
-  if (inString) {
-    closedStr += '"';
-  }
-
-  while (stack.length > 0) {
-    const lastOpen = stack.pop();
-    if (lastOpen === '{') {
-      closedStr = closedStr.trim();
-      if (closedStr.endsWith(',') || closedStr.endsWith(':')) {
-        closedStr = closedStr.slice(0, -1);
-      }
-      closedStr += '}';
-    } else if (lastOpen === '[') {
-      closedStr = closedStr.trim();
-      if (closedStr.endsWith(',')) {
-        closedStr = closedStr.slice(0, -1);
-      }
-      closedStr += ']';
-    }
-  }
-
-  return closedStr;
-}
-
-function parseA2UIContent(text: string) {
-  let cleanText = text;
-  let jsonStr: string | null = null;
-  let surfaceId = "currency_agent"; // default surface ID
-
-  // 1. Cut off streaming XML/JSON from cleanText so it doesn't leak during streaming
-  const xmlStartIndex = text.indexOf("<a2ui-json>");
-  if (xmlStartIndex !== -1) {
-    cleanText = text.substring(0, xmlStartIndex);
-    const xmlEndIndex = text.indexOf("</a2ui-json>");
-    if (xmlEndIndex !== -1) {
-      jsonStr = text.substring(xmlStartIndex + 11, xmlEndIndex);
-    } else {
-      jsonStr = text.substring(xmlStartIndex + 11);
-    }
-  } else {
-    // Check if there is a raw JSON block starting with { and containing "version": "v0.9" or "0.9"
-    const jsonStartIndex = text.search(/\{[\s\S]*?"version"\s*:\s*"v?0.9"/);
-    if (jsonStartIndex !== -1) {
-      cleanText = text.substring(0, jsonStartIndex);
-      const jsonMatch = text.match(/(\{[\s\S]*?"version"\s*:\s*"v?0.9"[\s\S]*?\})/);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[1];
-      } else {
-        jsonStr = text.substring(jsonStartIndex);
-      }
-    }
-  }
-
-  let parsed: any = null;
-  if (jsonStr) {
-    try {
-      const cleaned = cleanPartialJson(jsonStr.trim());
-      const rawParsed = JSON.parse(cleaned);
-      parsed = normalizeA2UIJson(rawParsed);
-      if (parsed.updateComponents?.surfaceId) {
-        surfaceId = parsed.updateComponents.surfaceId;
-      } else if (parsed.createSurface?.surfaceId) {
-        surfaceId = parsed.createSurface.surfaceId;
-      }
-    } catch (e) {
-      // JSON is not yet complete/valid
-    }
-  }
-
-  return { cleanText, parsed, surfaceId };
-}
-
-
-const A2UIContainer = ({ parsedJson, surfaceId }: { parsedJson: any; surfaceId: string }) => {
-  const { processMessages, getSurface } = useA2UI();
-  const lastProcessedRef = React.useRef<string>("");
-
-  useEffect(() => {
-    if (parsedJson) {
-      const serialized = JSON.stringify(parsedJson);
-      if (serialized === lastProcessedRef.current) {
-        return;
-      }
-      lastProcessedRef.current = serialized;
-
-      const messagesToProcess = [];
-      // Synthesize createSurface if the surface does not exist yet in A2UI store
-      if (parsedJson.updateComponents && surfaceId && !getSurface(surfaceId)) {
-        messagesToProcess.push({
-          version: "v0.9",
-          createSurface: {
-            surfaceId: surfaceId,
-            catalogId: "https://a2ui.org/specification/v0_9/basic_catalog.json"
-          }
-        });
-      }
-      messagesToProcess.push(parsedJson);
-      processMessages(messagesToProcess);
-
-      // Dispatch event to render/update the main page dashboard workspace
-      const updateEvent = new CustomEvent("a2ui-surface-active", { detail: { surfaceId, parsedJson } });
-      window.dispatchEvent(updateEvent);
-    }
-  }, [parsedJson, surfaceId, processMessages, getSurface]);
-
-  return (
-    <div className="mt-3 w-full">
-      <A2UIRenderer surfaceId={surfaceId} />
-    </div>
-  );
-};
-
+// @a2ui/react touches browser globals at import time, so load it client-only.
+const A2uiMessages = dynamic(
+  () => import("@/components/A2uiMessages").then((m) => m.A2uiMessages),
+  { ssr: false },
+);
 
 const DebugContext = React.createContext<{ debug: boolean; setDebug: (d: boolean) => void }>({
   debug: false,
@@ -367,25 +26,35 @@ const DebugContext = React.createContext<{ debug: boolean; setDebug: (d: boolean
 
 const CustomMarkdownRenderer = ({ content, ...props }: any) => {
   const { debug } = React.useContext(DebugContext);
-  const { cleanText, parsed, surfaceId } = React.useMemo(
-    () => parseA2UIContent(content),
-    [content]
-  );
+  const segments = React.useMemo(() => splitA2uiContent(content || ""), [content]);
+  const blocks = segments.filter((s) => s.kind === "a2ui") as { kind: "a2ui"; messages: unknown[] }[];
+  const lastKey = blocks.length ? JSON.stringify(blocks[blocks.length - 1].messages) : "";
+
+  // Mirror the newest view into the main dashboard viewport.
+  useEffect(() => {
+    if (!lastKey) return;
+    window.dispatchEvent(
+      new CustomEvent("a2ui-surface-active", { detail: { messages: JSON.parse(lastKey) } }),
+    );
+  }, [lastKey]);
+
   return (
     <div className="flex flex-col gap-2 w-full">
-      <CopilotChatAssistantMessage.MarkdownRenderer
-        {...props}
-        content={cleanText}
-      />
-      {parsed && surfaceId && (
-        <A2UIContainer parsedJson={parsed} surfaceId={surfaceId} />
+      {segments.map((seg, idx) =>
+        seg.kind === "text" ? (
+          <CopilotChatAssistantMessage.MarkdownRenderer key={idx} {...props} content={seg.text} />
+        ) : seg.kind === "a2ui" ? (
+          <A2uiMessages key={idx} messages={seg.messages} />
+        ) : (
+          <p key={idx} className="text-xs text-slate-400">Building the view…</p>
+        ),
       )}
-      {debug && parsed && (
+      {debug && blocks.length > 0 && (
         <div className="mt-2 p-3 bg-slate-950/80 border border-slate-800 rounded-xl font-mono text-[10px] text-emerald-400 max-h-[250px] overflow-auto text-left select-all">
           <div className="text-[9px] uppercase tracking-wider text-slate-500 font-bold mb-1 border-b border-slate-900 pb-1">
-            Raw A2UI JSON payload
+            A2UI 1.0 messages (compiled from Express by the Rust agent)
           </div>
-          <pre>{JSON.stringify(parsed, null, 2)}</pre>
+          <pre>{JSON.stringify(blocks.map((b) => b.messages), null, 2)}</pre>
         </div>
       )}
     </div>
@@ -527,15 +196,11 @@ function YourMainContent({
   setThemeColor: (color: string) => void;
 }) {
   const { debug, setDebug } = React.useContext(DebugContext);
-  const [activeSurfaceId, setActiveSurfaceId] = useState<string | null>(null);
-  const [activePayload, setActivePayload] = useState<any | null>(null);
+  const [activePayload, setActivePayload] = useState<unknown[] | null>(null);
 
   useEffect(() => {
     const handleSurfaceActive = (e: any) => {
-      const { surfaceId, parsedJson } = e.detail;
-      console.log("Widescreen dashboard received active surface:", surfaceId);
-      setActiveSurfaceId(surfaceId);
-      setActivePayload(parsedJson);
+      setActivePayload(e.detail.messages);
     };
     window.addEventListener("a2ui-surface-active", handleSurfaceActive);
     return () => window.removeEventListener("a2ui-surface-active", handleSurfaceActive);
@@ -571,7 +236,7 @@ function YourMainContent({
       style={{ backgroundColor: "#0f172a" }} // Matches deep dark-theme
       className="h-screen flex justify-center items-center flex-col transition-colors duration-300 px-6 text-center overflow-hidden"
     >
-      {activeSurfaceId ? (
+      {activePayload ? (
         <div className="w-full max-w-5xl h-[88vh] flex flex-col bg-slate-900/60 border border-slate-800/80 rounded-3xl p-8 shadow-2xl backdrop-blur-xl text-left animate-fade-in">
           {/* Dashboard Header */}
           <div className="flex justify-between items-center border-b border-slate-800/80 pb-4 mb-6">
@@ -581,7 +246,7 @@ function YourMainContent({
                 <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-blue-400 leading-tight">
                   Currency Intelligence Workspace
                 </h1>
-                <p className="text-xs text-slate-400 mt-0.5">Premium Agent-to-User Interface (A2UI) Viewport</p>
+                <p className="text-xs text-slate-400 mt-0.5">A2UI 1.0 viewport (Express + server-side macros, compiled in Rust)</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -592,10 +257,7 @@ function YourMainContent({
                 <button onClick={() => setThemeColor("#ec4899")} className="w-4 h-4 rounded-full bg-pink-500 hover:scale-125 transition duration-150 cursor-pointer" />
               </div>
               <button
-                onClick={() => {
-                  setActiveSurfaceId(null);
-                  setActivePayload(null);
-                }}
+                onClick={() => setActivePayload(null)}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 transition cursor-pointer"
               >
                 Reset Canvas
@@ -605,7 +267,7 @@ function YourMainContent({
 
           {/* Interactive viewport container */}
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-            <A2UIRenderer surfaceId={activeSurfaceId} />
+            <A2uiMessages messages={activePayload} />
           </div>
         </div>
       ) : (

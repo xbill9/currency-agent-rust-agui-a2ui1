@@ -14,9 +14,8 @@ const runtime = new CopilotRuntime({
     }),
   },
   runner: new InMemoryAgentRunner(),
-  a2ui: {
-    a2uiToolNames: ["render_a2ui", "send_a2ui_json_to_client"],
-  },
+  // A2UI 1.0 is compiled by the Rust agent and rendered client-side by
+  // @a2ui/react (A2uiMessages.tsx); CopilotKit's A2UI middleware speaks v0.9.
 });
 
 const multiRouteHandler = createCopilotRuntimeHandler({

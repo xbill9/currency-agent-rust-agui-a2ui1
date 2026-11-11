@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "catalogId": "https://a2ui.org/catalog/currency-charts/v1/catalog.json",
+  "protocolVersion": "1.0",
+  "components": {
+    "BarChart": {
+      "type": "object",
+      "description": "Renders a vertical bar chart for comparing exchange rates.",
+      "properties": {
+        "component": { "const": "BarChart" },
+        "title": { "type": "string" },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "values": { "type": "array", "items": { "type": "number" } },
+        "color": { "type": "string" }
+      },
+      "required": ["component", "labels", "values"]
+    },
+    "LineChart": {
+      "type": "object",
+      "description": "Renders an SVG line chart for showing exchange rate history over time.",
+      "properties": {
+        "component": { "const": "LineChart" },
+        "title": { "type": "string" },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "values": { "type": "array", "items": { "type": "number" } },
+        "color": { "type": "string" }
+      },
+      "required": ["component", "labels", "values"]
+    }
+  },
+  "$defs": {
+    "anyComponent": {
+      "oneOf": [
+        { "$ref": "#/components/BarChart" },
+        { "$ref": "#/components/LineChart" }
+      ],
+      "discriminator": { "propertyName": "component" }
+    },
+    "anyFunction": { "not": {} }
+  }
+}
